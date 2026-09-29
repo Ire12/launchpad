@@ -27,10 +27,24 @@ import { getTokenActionBlockedReason } from "@/components/TokenStatusBanner";
 import type { TokenInfo, WalletTokenState } from "@/lib/stellar";
 import { toBaseUnits } from "@/lib/utils";
 
-const transferSchema = z.object({
-  to: z.string().regex(/^G[A-Z2-7]{55}$/, "Invalid Stellar address (must start with G)"),
-  amount: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, "Amount must be positive"),
-});
+const buildTransferSchema = (decimals: number) =>
+  z.object({
+    to: z.string().regex(/^G[A-Z2-7]{55}$/, "Invalid Stellar address (must start with G)"),
+    amount: z
+      .string()
+      .refine((val) => !isNaN(Number(val)) && Number(val) > 0, "Amount must be positive")
+      .refine(
+        (val) => {
+          try {
+            toBaseUnits(val, decimals);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        `Amount supports at most ${decimals} decimal place${decimals === 1 ? "" : "s"}`,
+      ),
+  });
 
 type TransferData = z.infer<typeof transferSchema>;
 
@@ -78,7 +92,7 @@ export function TransferPanel({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const form = useForm<TransferData>({ resolver: zodResolver(transferSchema) });
+  const form = useForm<TransferData>({ resolver: zodResolver(buildTransferSchema(tokenDecimals)) });
 
   const fetchBalance = async () => {
     if (!publicKey || !connected) { setUserBalance(null); return; }
@@ -122,7 +136,13 @@ export function TransferPanel({
     try {
       const StellarSdk = await import("@stellar/stellar-sdk");
       const rpc = new StellarSdk.rpc.Server(networkConfig.rpcUrl);
-      const rawAmount = toBaseUnits(data.amount, tokenDecimals);
+      let rawAmount: bigint;
+      try {
+        rawAmount = toBaseUnits(data.amount, tokenDecimals);
+      } catch (err) {
+        form.setError("amount", { type: "manual", message: err instanceof Error ? err.message : "Invalid amount" });
+        return;
+      }
       const account = await rpc.getAccount(publicKey);
       const contract = new Contract(contractId);
       const tx = new TransactionBuilder(account, { fee: StellarSdk.BASE_FEE, networkPassphrase: networkConfig.passphrase })
