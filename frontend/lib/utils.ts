@@ -11,7 +11,7 @@ export function cn(...classes: (string | undefined | null | false)[]): string {
 /**
  * Expand a `number` into a plain decimal string, without exponent notation.
  *
- * `String(1e21)` is `"\e+21"` and `String(1e-7)` is `"1e-7"`; neither can be
+ * `String(1e21)` is `"1e+21"` and `String(1e-7)` is `"1e-7"`; neither can be
  * scaled by string surgery. This rewrites both into positional form. The
  * result is the double's shortest round-trip representation — i.e. exactly
  * what the user would see — not an approximation introduced here.
@@ -20,7 +20,7 @@ function toDecimalString(value: number): string {
   if (!Number.isFinite(value)) return "";
 
   const text = String(value);
-  const match = /^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/.exec(text);
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?[eE][(+-]?\d+)$/.exec(text);
   if (!match) return text;
 
   const [, sign, intPart, fracPart = "", expPart] = match;
@@ -94,15 +94,32 @@ export function toBaseUnits(display: number | string, decimals: number): bigint 
  *
  * This is the single authoritative inverse of `toBaseUnits`. Do NOT hand-roll
  * `Number(amount) / 10 ** decimals` in app/ or components/ — import this instead.
+ *
+ * Handles negative inputs by formatting the magnitude and re-applying the
+ * sign. JavaScript's `%` keeps the sign of the dividend, so formatting `raw`
+ * directly would mangle the fraction (e.g. `-1n` at 7 decimals becomes
+ * `0.00000-1`). This matters for deltas in the activity feed, vesting
+ * progress, and supply-breakdown segments, which can be negative.
  */
 export function fromBaseUnits(raw: bigint, decimals: number): string {
   if (decimals === 0) return raw.toString();
+
+  const negative = raw < 0n
+  const magnitude = negative ? -raw : raw
+
   const divisor = BigInt(10) ** BigInt(decimals);
-  const whole = raw / divisor;
-  const frac = raw % divisor;
-  if (frac === 0n) return whole.toString();
-  const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-  return `${whole}.${fracStr}`;
+  const whole = magnitude / divisor;
+  const frac = magnitude % divisor;
+
+  let formatted: string;
+  if (frac === 0n) {
+    formatted = whole.toString();
+  } else {
+    const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+    formatted = `${whole}.${fracStr}`;
+  }
+
+  return negative ? `-${formatted}` : formatted;
 }
 
 /**
