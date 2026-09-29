@@ -11,7 +11,7 @@ export function cn(...classes: (string | undefined | null | false)[]): string {
 /**
  * Expand a `number` into a plain decimal string, without exponent notation.
  *
- * `String(1e21)` is `"1e+21"` and `String(1e-7)` is `"1e-7"`; neither can be
+ * `String(1e21)` is `"\e+21"` and `String(1e-7)` is `"1e-7"`; neither can be
  * scaled by string surgery. This rewrites both into positional form. The
  * result is the double's shortest round-trip representation — i.e. exactly
  * what the user would see — not an approximation introduced here.
@@ -103,4 +103,31 @@ export function fromBaseUnits(raw: bigint, decimals: number): string {
   if (frac === 0n) return whole.toString();
   const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
   return `${whole}.${fracStr}`;
+}
+
+/**
+ * Safely convert a display amount to base units, returning a discriminated
+ * result instead of throwing. Wraps `toBaseUnits` so callers (form submit
+ * handlers, render paths) can deal with the `RangeError` as a field-level
+ * error rather than an uncaught exception.
+ *
+ * Returns `{ ok: true, value }` on success, or `{ ok: false, error }` where
+ * `error` is the original `RangeError` message.
+ */
+export type ToBaseUnitsResult =
+  | { ok: true; value: bigint }
+  | { ok: false; error: string };
+
+export function tryToBaseUnits(
+  display: number | string,
+  decimals: number,
+): ToBaseUnitsResult {
+  try {
+    return { ok: true, value: toBaseUnits(display, decimals) };
+  } catch (err) {
+    if (err instanceof RangeError) {
+      return { ok: false, error: err.message };
+    }
+    throw err;
+  }
 }

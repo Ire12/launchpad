@@ -25,6 +25,30 @@ import { useToast } from "@/app/providers/ToastProvider";
 import { useDeployToken, type DeployTokenError } from "../hooks/useDeployToken";
 import { toBaseUnits } from "@/lib/utils";
 
+/**
+ * Wraps `toBaseUnits` so that a `RangeError` (too many decimal places for the
+ * selected token precision) is surfaced as a validation failure instead of an
+ * uncaught exception. Returns `null` when the value cannot be represented.
+ */
+const tryToBaseUnits = (value: string, decimals: number): bigint | null => {
+  try {
+    return toBaseUnits(value, decimals);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Preview-safe conversion used during render. Never throws: if the value
+ * cannot be represented at the selected precision, the raw string is returned
+ * so the user can see what they typed.
+ */
+const previewBaseUnits = (value: string | undefined, decimals: number): string => {
+  if (value == null || value === "") return "";
+  const parsed = tryToBaseUnits(value, decimals);
+  return parsed === null ? value : parsed.toString();
+};
+
 const integerString = z
   .string()
   .min(1, "Initial supply is required")
