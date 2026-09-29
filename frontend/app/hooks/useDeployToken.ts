@@ -151,6 +151,29 @@ export function useDeployToken() {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Convert a decimal string to base units, translating the `RangeError` thrown
+ * by `toBaseUnits` when the input has more decimal places than the token
+ * supports into a `DeployTokenError` with `type: "validation"`.
+ */
+function toBaseUnitsOrThrow(
+  value: string,
+  decimals: number,
+  field: string,
+): bigint {
+  try {
+    return toBaseUnits(value, decimals);
+  } catch (err) {
+    if (err instanceof RangeError) {
+      throw {
+        message: `${field}: ${err.message}`,
+        type: "validation",
+      } as DeployTokenError;
+    }
+    throw err;
+  }
+}
+
 interface DeployContext {
   publicKey: string;
   signTransaction: (xdr: string, opts?: { networkPassphrase?: string }) => Promise<string>;
@@ -250,7 +273,7 @@ function buildTokenConfigScVals(
   deployer: string,
 ): StellarSdk.xdr.ScVal {
   const maxSupply = params.maxSupply
-    ? toBaseUnits(params.maxSupply, params.decimals)
+    ? toBaseUnitsOrThrow(params.maxSupply, params.decimals, "maxSupply")
     : null;
   const complianceNode =
     params.complianceNodeAddress && params.complianceNodeAddress.trim().length > 0
@@ -264,7 +287,7 @@ function buildTokenConfigScVals(
       authorization_revocable: params.authorizationRevocable ?? false,
       compliance_node: complianceNode,
       decimal: params.decimals,
-      initial_supply: toBaseUnits(params.initialSupply, params.decimals),
+      initial_supply: toBaseUnitsOrThrow(params.initialSupply, params.decimals, "initialSupply"),
       max_supply: maxSupply,
       name: params.name,
       symbol: params.symbol,
@@ -456,9 +479,9 @@ async function deployLegacy(
       decimal: params.decimals,
       name: params.name,
       symbol: params.symbol,
-      initial_supply: toBaseUnits(params.initialSupply, params.decimals),
+      initial_supply: toBaseUnitsOrThrow(params.initialSupply, params.decimals, "initialSupply"),
       max_supply: params.maxSupply
-        ? toBaseUnits(params.maxSupply, params.decimals)
+        ? toBaseUnitsOrThrow(params.maxSupply, params.decimals, "maxSupply")
         : undefined,
       authorization_required: params.authorizationRequired ?? false,
       authorization_revocable: params.authorizationRevocable ?? false,
