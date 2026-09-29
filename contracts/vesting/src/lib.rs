@@ -357,6 +357,10 @@ impl VestingContract {
 
             Self::_validate_total_amount(input.total_amount);
             assert!(
+                input.cliff_ledger >= env.ledger().sequence(),
+                "cliff_ledger must not be in the past"
+            );
+            assert!(
                 input.end_ledger > input.cliff_ledger,
                 "end_ledger must be after cliff_ledger"
             );
